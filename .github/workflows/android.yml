@@ -26,14 +26,16 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools'
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
-          adb start-server
-          adb version
+          sdkmanager --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "cmdline-tools;latest" \
+            "cmake;3.10.2.4988404" \
+            "ndk;23.2.8568313"
 
       - name: Set up Godot and export templates
         uses: chickensoft-games/setup-godot@v2
@@ -43,7 +45,6 @@ jobs:
           include-templates: true
 
       - name: Configure Godot Android paths
-        shell: bash
         run: |
           mkdir -p "$HOME/.config/godot"
           cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
@@ -54,15 +55,10 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "JAVA_HOME=$JAVA_HOME"
-          test -d "$ANDROID_HOME"
-          test -d "$JAVA_HOME"
-
       - name: Create debug signing key
         run: |
           mkdir -p "$HOME/.android"
-          keytool -genkeypair -v \
+          keytool -genkeypair \
             -keystore "$HOME/.android/debug.keystore" \
             -storepass android \
             -keypass android \
@@ -77,7 +73,6 @@ jobs:
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
 
       - name: Create Android export preset
-        shell: bash
         run: |
           cat > export_presets.cfg <<'EOF'
           [preset.0]
@@ -102,8 +97,6 @@ jobs:
           custom_template/release=""
           gradle_build/use_gradle_build=false
           gradle_build/export_format=0
-          gradle_build/min_sdk=""
-          gradle_build/target_sdk=""
           package/unique_name="com.yashpreet.miniwarriors"
           package/name="Mini Warriors"
           package/signed=true
@@ -114,24 +107,18 @@ jobs:
           EOF
 
       - name: Validate project
-        shell: bash
         run: |
           godot --version
           godot --headless --path . --editor --quit
           test -f project.godot
           test -f main.tscn
           test -f game.gd
-          test -f export_presets.cfg
 
       - name: Export Android APK
-        shell: bash
         run: |
           mkdir -p build
-          adb start-server
-          set -o pipefail
-          godot --headless --path . --verbose \
-            --export-debug "Android" build/MiniWarriors.apk \
-            2>&1 | tee build/export.log
+          godot --headless --path . \
+            --export-debug "Android" build/MiniWarriors.apk
 
           test -s build/MiniWarriors.apk
 
@@ -143,11 +130,10 @@ jobs:
           path: build/MiniWarriors.apk
           if-no-files-found: error
 
-      - name: Upload export log if build fails
+      - name: Upload logs if build fails
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: MiniWarriors-Build-Logs
           path: build/export.log
           if-no-files-found: ignore
-          
