@@ -1,0 +1,28 @@
+name: Build Mini Warriors Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download game source
+        uses: actions/checkout@v4
+
+      - name: Build Android APK
+        uses: barichello/godot-ci:4.3.0
+        with:
+          project: .
+          preset: Android
+          export_path: build/MiniWarriors.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniWarriors-APK
+          path: build/MiniWarriors.apk
+          
