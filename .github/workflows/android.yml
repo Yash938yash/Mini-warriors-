@@ -56,6 +56,10 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
       - name: Configure Godot Android paths
         run: |
           mkdir -p "$HOME/.config/godot"
@@ -71,8 +75,6 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
           done
-          echo "--- editor settings ---"
-          cat "$HOME/.config/godot/editor_settings-4.3.tres"
 
       - name: Create Android export preset
         run: |
@@ -118,6 +120,18 @@ jobs:
           test -f project.godot
           test -f main.tscn
           test -f game.gd
+
+      - name: Enable ETC2/ASTC for Android
+        run: |
+          if grep -q "import_etc2_astc" project.godot; then
+            sed -i 's|^textures/vram_compression/import_etc2_astc=.*|textures/vram_compression/import_etc2_astc=true|' project.godot
+          elif grep -q "^\[rendering\]" project.godot; then
+            sed -i '/^\[rendering\]/a textures/vram_compression/import_etc2_astc=true' project.godot
+          else
+            printf '\n[rendering]\n\ntextures/vram_compression/import_etc2_astc=true\n' >> project.godot
+          fi
+          grep -n -B1 -A3 "etc2_astc" project.godot
+          godot --headless --path . --import
 
       - name: Export Android APK
         shell: bash
