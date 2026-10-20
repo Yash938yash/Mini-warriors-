@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -16,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -29,6 +32,8 @@ jobs:
       - name: Install Android SDK packages
         run: |
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          adb start-server
+          adb version
 
       - name: Set up Godot and export templates
         uses: chickensoft-games/setup-godot@v2
@@ -37,11 +42,46 @@ jobs:
           use-dotnet: false
           include-templates: true
 
+      - name: Configure Godot Android paths
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOF
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "JAVA_HOME=$JAVA_HOME"
+          test -d "$ANDROID_HOME"
+          test -d "$JAVA_HOME"
+
+      - name: Create debug signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
       - name: Create Android export preset
         shell: bash
         run: |
           cat > export_presets.cfg <<'EOF'
           [preset.0]
+
           name="Android"
           platform="Android"
           runnable=true
@@ -57,57 +97,57 @@ jobs:
           encrypt_directory=false
 
           [preset.0.options]
+
           custom_template/debug=""
           custom_template/release=""
           gradle_build/use_gradle_build=false
           gradle_build/export_format=0
+          gradle_build/min_sdk=""
+          gradle_build/target_sdk=""
           package/unique_name="com.yashpreet.miniwarriors"
           package/name="Mini Warriors"
+          package/signed=true
           version/code=1
           version/name="1.0"
           architectures/armeabi-v7a=true
           architectures/arm64-v8a=true
           EOF
 
-      - name: Configure Godot Android paths
+      - name: Validate project
         shell: bash
-        run: |
-          mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
-          [gd_resource type="EditorSettings" format=3]
-          [resource]
-          export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/java_sdk_path = "$JAVA_HOME"
-          EOF
-
-      - name: Create debug signing key
-        run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -v \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android -keypass android \
-            -alias androiddebugkey -keyalg RSA \
-            -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
-
-      - name: Check project
         run: |
           godot --version
           godot --headless --path . --editor --quit
+          test -f project.godot
+          test -f main.tscn
+          test -f game.gd
+          test -f export_presets.cfg
 
-      - name: Export APK
+      - name: Export Android APK
+        shell: bash
         run: |
           mkdir -p build
-          godot --headless --path . --export-debug "Android" build/MiniWarriors.apk
+          adb start-server
+          set -o pipefail
+          godot --headless --path . --verbose \
+            --export-debug "Android" build/MiniWarriors.apk \
+            2>&1 | tee build/export.log
+
+          test -s build/MiniWarriors.apk
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: MiniWarriors-APK
           path: build/MiniWarriors.apk
           if-no-files-found: error
+
+      - name: Upload export log if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniWarriors-Build-Logs
+          path: build/export.log
+          if-no-files-found: ignore
           
