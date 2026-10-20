@@ -10,25 +10,29 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Set up Godot
-        uses: chickensoft-games/setup-godot@v1
-        with:
-          version: 4.3.0
-          use-dotnet: false
+      - name: Install Godot
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y godot
 
-      - name: Check project
-        run: godot --headless --path . --editor --quit
+      - name: Check project files
+        run: |
+          godot --version
+          godot --headless --path . --editor --quit
 
-      - name: Upload project files for next step
+      - name: Package project
+        run: |
+          mkdir -p build
+          zip -j build/MiniWarriors-Project.zip project.godot main.tscn game.gd
+
+      - name: Upload project
         uses: actions/upload-artifact@v4
         with:
           name: MiniWarriors-Project
-          path: |
-            project.godot
-            main.tscn
-            game.gd
-            
+          path: build/MiniWarriors-Project.zip
+          
